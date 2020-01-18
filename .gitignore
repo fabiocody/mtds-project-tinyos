@@ -154,3 +154,10 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.gitignore.io/api/c,linux,macos,cmake,windows,visualstudiocode
+
+
+## TinyOS
+
+TOSSIM.py
+app.xml
+simbuild/
