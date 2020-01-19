@@ -51,7 +51,7 @@ module NodeC {
         setup_msg->setup_id = setup_id;
         setup_msg->threshold = INITIAL_THRESHOLD;
         if (call AMSend.send(AM_BROADCAST_ADDR, &pkt, sizeof(SETUP_msg_t)) == SUCCESS) {
-            dbg_clear(DEBUG_OUT, "%s | %02u | SETUP(setup_id=%u, threshold=%d) flooded\n", sim_time_string(), TOS_NODE_ID, setup_id, threshold);
+            dbg_clear(DEBUG_SETUP, "%s | %02u | SETUP(setup_id=%u, threshold=%d) flooded\n", sim_time_string(), TOS_NODE_ID, setup_id, threshold);
         } else {
             dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ SETUP(setup_id=%u, threshold=%d) failed to flood\n", sim_time_string(), TOS_NODE_ID, setup_id, threshold);
         }
@@ -69,7 +69,7 @@ module NodeC {
             data_msg->sender = TOS_NODE_ID;
             data_msg->temperature = temperature;
             if (call AMSend.send(next_hop_to_sink, &pkt, sizeof(DATA_msg_t)) == SUCCESS) {
-                dbg_clear(DEBUG_OUT, "%s | %02u | DATA(temperature=%d) sent to %u\n", sim_time_string(), TOS_NODE_ID, temperature, next_hop_to_sink);
+                dbg_clear(DEBUG_DATA, "%s | %02u | DATA(temperature=%d) sent to %u\n", sim_time_string(), TOS_NODE_ID, temperature, next_hop_to_sink);
             } else {
                 dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ DATA(temperature=%d) failed to send\n", sim_time_string(), TOS_NODE_ID, temperature);
             }
@@ -97,7 +97,7 @@ module NodeC {
     task void forwardData() {
         DATA_msg_t saved_data_msg;
         DATA_msg_t *data_msg;
-        if (call MessageQueue.empty()) return;
+        //if (call MessageQueue.empty()) return;
         data_msg = (DATA_msg_t *) call Packet.getPayload(&pkt, sizeof(DATA_msg_t));
         if (data_msg == NULL) {
             dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ NULL payload\n", sim_time_string(), TOS_NODE_ID);
@@ -108,7 +108,7 @@ module NodeC {
         data_msg->sender = saved_data_msg.sender;
         data_msg->temperature = saved_data_msg.temperature;
         if (call AMSend.send(next_hop_to_sink, &pkt, sizeof(DATA_msg_t)) == SUCCESS) {
-            dbg_clear(DEBUG_OUT, "%s | %02u | DATA(temperature=%d, sender=%u) forwarded to %u\n", sim_time_string(), TOS_NODE_ID, saved_data_msg.temperature, saved_data_msg.sender, next_hop_to_sink);
+            dbg_clear(DEBUG_DATA, "%s | %02u | DATA(temperature=%d, sender=%u) forwarded to %u\n", sim_time_string(), TOS_NODE_ID, saved_data_msg.temperature, saved_data_msg.sender, next_hop_to_sink);
         } else {
             dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ DATA(temperature=%d, sender=%u) failed to forward\n", sim_time_string(), TOS_NODE_ID, saved_data_msg.temperature, saved_data_msg.sender);
         }
@@ -121,9 +121,9 @@ module NodeC {
                 SETUP_msg_t *setup_msg = (SETUP_msg_t *) payload;
                 if (setup_msg->setup_id > setup_id) {
                     setup_id = setup_msg->setup_id;
-                    threshold = setup_msg->threshold;
+                    threshold = setup_msg->threshold + 10;
                     next_hop_to_sink = call AMPacket.source(msg);
-                    dbg_clear(DEBUG_OUT, "%s | %02u | SETUP(setup_id=%u, threshold=%d) received from %u\n", sim_time_string(), TOS_NODE_ID, setup_id, threshold, next_hop_to_sink);
+                    dbg_clear(DEBUG_SETUP, "%s | %02u | SETUP(setup_id=%u, threshold=%d) received from %u\n", sim_time_string(), TOS_NODE_ID, setup_id, threshold, next_hop_to_sink);
                     post floodSetup();
                 }
             }
@@ -134,7 +134,7 @@ module NodeC {
                 post forwardData();
             } else {
                 threshold = data_msg->temperature > threshold ? data_msg->temperature : threshold;
-                dbg_clear(DEBUG_OUT, "%s | %02u | DATA(temperature=%d, sender=%u) received\n", sim_time_string(), TOS_NODE_ID, data_msg->temperature, data_msg->sender);
+                dbg_clear(DEBUG_DATA, "%s | %02u | DATA(temperature=%d, sender=%u) received\n", sim_time_string(), TOS_NODE_ID, data_msg->temperature, data_msg->sender);
             }
         } else {
             dbgerror_clear(DEBUG_ERR, "%s | %02u | UNRECOGNIZED MESSAGE TYPE %d\n", sim_time_string(), TOS_NODE_ID, generic_msg->msg_type);
