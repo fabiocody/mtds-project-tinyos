@@ -1,8 +1,8 @@
 #!/usr/bin/python
 
-N_MOTES = 5
+N_MOTES = 10
 DBG_CHANNELS = "out err"
-SIM_TIME = 100
+SIM_TIME = 70
 TOPO_FILE = "linkgain.out"
 NOISE_FILE = "/usr/src/tinyos/tos/lib/tossim/noise/meyer-heavy.txt"
 #NOISE_FILE = "/usr/src/tinyos/tos/lib/tossim/noise/casino-lab.txt"
