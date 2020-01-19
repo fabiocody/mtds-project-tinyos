@@ -2,7 +2,7 @@
 
 N_MOTES = 6
 DBG_CHANNELS = "out err"
-SIM_TIME = 20
+SIM_TIME = 70
 TOPO_FILE = "linkgain.out"
 NOISE_FILE = "/usr/src/tinyos/tos/lib/tossim/noise/meyer-heavy.txt"
 #NOISE_FILE = "/usr/src/tinyos/tos/lib/tossim/noise/casino-lab.txt"

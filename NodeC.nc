@@ -51,7 +51,7 @@ module NodeC {
         setup_msg->setup_id = setup_id;
         setup_msg->threshold = INITIAL_THRESHOLD;
         if (call AMSend.send(AM_BROADCAST_ADDR, &pkt, sizeof(SETUP_msg_t)) == SUCCESS) {
-            dbg(DEBUG_OUT, "%s | Flooded SETUP message with setup_id=%d\n", sim_time_string(), setup_id);
+            dbg(DEBUG_OUT, "%s | Flooded SETUP message with threshold=%d and setup_id=%d\n", sim_time_string(), threshold, setup_id);
         } else {
             dbg(DEBUG_ERR, "%s | Failed to flood SETUP message with setup_id=%d\n", sim_time_string(), setup_id);
         }
@@ -88,7 +88,7 @@ module NodeC {
         setup_msg->setup_id = setup_id;
         setup_msg->threshold = threshold;
         if (call AMSend.send(AM_BROADCAST_ADDR, &pkt, sizeof(SETUP_msg_t)) == SUCCESS) {
-            dbg(DEBUG_OUT, "%s | Flooded SETUP message with setup_id=%d\n", sim_time_string(), setup_id);
+            dbg(DEBUG_OUT, "%s | Flooded SETUP message with threshold=%d and setup_id=%d\n", sim_time_string(), threshold, setup_id);
         } else {
             dbg(DEBUG_ERR, "%s | Failed to flood SETUP message with setup_id=%d\n", sim_time_string(), setup_id);
         }
@@ -130,6 +130,7 @@ module NodeC {
                 data_msg_to_relay.temperature = data_msg->temperature;
                 post forwardData();
             } else {
+                threshold = data_msg->temperature > threshold ? data_msg->temperature : threshold;
                 dbg(DEBUG_OUT, "%s | Received DATA message from %d with temperature=%d\n", sim_time_string(), data_msg->sender, data_msg->temperature);
             }
         } else {
