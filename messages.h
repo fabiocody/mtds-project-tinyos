@@ -9,23 +9,23 @@
 #define DATA_MSG_TYPE 2
 
 
-typedef nxstruct GENERIC_msg {
-    uint8_t msg_type;
-} GENERIC_msg;
+typedef nx_struct GENERIC_msg {
+    nx_uint8_t msg_type;
+} GENERIC_msg_t;
 
 
-typedef nxstruct SETUP_msg {
-    nxuint8_t msg_type;
-    nxuint16_t setup_id;
-    nxint16_t threshold;
-} SETUP_msg;
+typedef nx_struct SETUP_msg {
+    nx_uint8_t msg_type;
+    nx_uint16_t setup_id;
+    nx_int16_t threshold;
+} SETUP_msg_t;
 
 
-typedef nxstruct DATA_msg {
-    nxuint8_t msg_type;
-    nxuint16_t sender;
-    nxint16_t temperature;
-} DATA_msg;
+typedef nx_struct DATA_msg {
+    nx_uint8_t msg_type;
+    nx_uint16_t sender;
+    nx_int16_t temperature;
+} DATA_msg_t;
 
 
 #endif // MESSAGES_H

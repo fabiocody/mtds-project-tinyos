@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
-N_MOTES = 1
-DBG_CHANNELS = "NodeC"
+N_MOTES = 3
+DBG_CHANNELS = "out err"
 SIM_TIME = 20
 TOPO_FILE = "linkgain.out"
 NOISE_FILE = "/usr/src/tinyos/tos/lib/tossim/noise/meyer-heavy.txt"
@@ -56,6 +56,6 @@ while (time + SIM_TIME * t.ticksPerSecond() > t.time()):
     timeTemp = int(t.time()/(t.ticksPerSecond()*10))
     if( timeTemp > lastTime ): #stampa un segnale ogni 10 secondi... per leggere meglio il log
         lastTime = timeTemp
-        print "----------------------------------SIMULATION: ~", lastTime*10, " s ----------------------"
+        print "---------------------------------- SIMULATION: ~", lastTime*10, " s ----------------------"
     t.runNextEvent()
-print "----------------------------------END OF SIMULATION-------------------------------------"
+print "---------------------------------- END OF SIMULATION -------------------------------------"
