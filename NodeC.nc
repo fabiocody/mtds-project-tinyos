@@ -43,7 +43,7 @@ module NodeC {
     event void SetupTimer.fired() {
         SETUP_msg_t *setup_msg = (SETUP_msg_t *) call Packet.getPayload(&pkt, sizeof(SETUP_msg_t));
         if (setup_msg == NULL) {
-            dbg(DEBUG_ERR, "%s | NULL payload\n", sim_time_string());
+            dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ NULL payload\n", sim_time_string(), TOS_NODE_ID);
             return;
         }
         setup_id++;
@@ -51,27 +51,27 @@ module NodeC {
         setup_msg->setup_id = setup_id;
         setup_msg->threshold = INITIAL_THRESHOLD;
         if (call AMSend.send(AM_BROADCAST_ADDR, &pkt, sizeof(SETUP_msg_t)) == SUCCESS) {
-            dbg(DEBUG_OUT, "%s | Flooded SETUP message with threshold=%d and setup_id=%d\n", sim_time_string(), threshold, setup_id);
+            dbg_clear(DEBUG_OUT, "%s | %02u | SETUP(setup_id=%u, threshold=%d) flooded\n", sim_time_string(), TOS_NODE_ID, setup_id, threshold);
         } else {
-            dbg(DEBUG_ERR, "%s | Failed to flood SETUP message with setup_id=%d\n", sim_time_string(), setup_id);
+            dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ SETUP(setup_id=%u, threshold=%d) failed to flood\n", sim_time_string(), TOS_NODE_ID, setup_id, threshold);
         }
     }
 
     event void TemperatureSensor.readDone(error_t err, int16_t temperature) {
-        dbg(DEBUG_TEMP, "%s | Temperature = %d\n", sim_time_string(), temperature);
+        dbg_clear(DEBUG_TEMP, "%s | %02u | temperature = %d\n", sim_time_string(), TOS_NODE_ID, temperature);
         if (setup_id > 0 && temperature > threshold) {
             DATA_msg_t *data_msg = (DATA_msg_t *) call Packet.getPayload(&pkt, sizeof(DATA_msg_t));
             if (data_msg == NULL) {
-                dbg(DEBUG_ERR, "%s | NULL payload\n", sim_time_string());
+                dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ NULL payload\n", sim_time_string(), TOS_NODE_ID);
                 return;
             }
             data_msg->msg_type = DATA_MSG_TYPE;
             data_msg->sender = TOS_NODE_ID;
             data_msg->temperature = temperature;
             if (call AMSend.send(next_hop_to_sink, &pkt, sizeof(DATA_msg_t)) == SUCCESS) {
-                dbg(DEBUG_OUT, "%s | Sent DATA message with temperature=%d to %d\n", sim_time_string(), temperature, next_hop_to_sink);
+                dbg_clear(DEBUG_OUT, "%s | %02u | DATA(temperature=%d) sent to %u\n", sim_time_string(), TOS_NODE_ID, temperature, next_hop_to_sink);
             } else {
-                dbg(DEBUG_ERR, "%s | Failed to send DATA message\n", sim_time_string());
+                dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ DATA(temperature=%d) failed to send\n", sim_time_string(), TOS_NODE_ID, temperature);
             }
         }
     }
@@ -81,16 +81,16 @@ module NodeC {
     task void floodSetup() {
         SETUP_msg_t *setup_msg = (SETUP_msg_t *) call Packet.getPayload(&pkt, sizeof(SETUP_msg_t));
         if (setup_msg == NULL) {
-            dbg(DEBUG_ERR, "%s | NULL payload\n", sim_time_string());
+            dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ NULL payload\n", sim_time_string(), TOS_NODE_ID);
             return;
         }
         setup_msg->msg_type = SETUP_MSG_TYPE;
         setup_msg->setup_id = setup_id;
         setup_msg->threshold = threshold;
         if (call AMSend.send(AM_BROADCAST_ADDR, &pkt, sizeof(SETUP_msg_t)) == SUCCESS) {
-            dbg(DEBUG_OUT, "%s | Flooded SETUP message with threshold=%d and setup_id=%d\n", sim_time_string(), threshold, setup_id);
+            dbg_clear(DEBUG_DBG, "%s | %02u | SETUP(setup_id=%u, threshold=%d) flooded\n", sim_time_string(), TOS_NODE_ID, setup_id, threshold);
         } else {
-            dbg(DEBUG_ERR, "%s | Failed to flood SETUP message with setup_id=%d\n", sim_time_string(), setup_id);
+            dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ SETUP(setup_id=%u, threshold=%d) failed to flood\n", sim_time_string(), TOS_NODE_ID, setup_id, threshold);
         }
     }
 
@@ -100,7 +100,7 @@ module NodeC {
         if (call MessageQueue.empty()) return;
         data_msg = (DATA_msg_t *) call Packet.getPayload(&pkt, sizeof(DATA_msg_t));
         if (data_msg == NULL) {
-            dbg(DEBUG_ERR, "%s | NULL payload\n", sim_time_string());
+            dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ NULL payload\n", sim_time_string(), TOS_NODE_ID);
             return;
         }
         saved_data_msg = (DATA_msg_t) call MessageQueue.dequeue();
@@ -108,9 +108,9 @@ module NodeC {
         data_msg->sender = saved_data_msg.sender;
         data_msg->temperature = saved_data_msg.temperature;
         if (call AMSend.send(next_hop_to_sink, &pkt, sizeof(DATA_msg_t)) == SUCCESS) {
-            dbg(DEBUG_OUT, "%s | Forwarded DATA message with temperature=%d to %d\n", sim_time_string(), saved_data_msg.temperature, next_hop_to_sink);
+            dbg_clear(DEBUG_OUT, "%s | %02u | DATA(temperature=%d, sender=%u) forwarded to %u\n", sim_time_string(), TOS_NODE_ID, saved_data_msg.temperature, saved_data_msg.sender, next_hop_to_sink);
         } else {
-            dbg(DEBUG_ERR, "%s | Failed to forward DATA message\n", sim_time_string());
+            dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ DATA(temperature=%d, sender=%u) failed to forward\n", sim_time_string(), TOS_NODE_ID, saved_data_msg.temperature, saved_data_msg.sender);
         }
     }
 
@@ -123,7 +123,7 @@ module NodeC {
                     setup_id = setup_msg->setup_id;
                     threshold = setup_msg->threshold;
                     next_hop_to_sink = call AMPacket.source(msg);
-                    dbg(DEBUG_OUT, "%s | Received SETUP message from %d (setup_id=%d)\n", sim_time_string(), next_hop_to_sink, setup_id);
+                    dbg_clear(DEBUG_OUT, "%s | %02u | SETUP(setup_id=%u, threshold=%d) received from %u\n", sim_time_string(), TOS_NODE_ID, setup_id, threshold, next_hop_to_sink);
                     post floodSetup();
                 }
             }
@@ -134,10 +134,10 @@ module NodeC {
                 post forwardData();
             } else {
                 threshold = data_msg->temperature > threshold ? data_msg->temperature : threshold;
-                dbg(DEBUG_OUT, "%s | Received DATA message from %d with temperature=%d\n", sim_time_string(), data_msg->sender, data_msg->temperature);
+                dbg_clear(DEBUG_OUT, "%s | %02u | DATA(temperature=%d, sender=%u) received\n", sim_time_string(), TOS_NODE_ID, data_msg->temperature, data_msg->sender);
             }
         } else {
-            dbg(DEBUG_ERR, "%s | Unrecognized message type %d\n", sim_time_string(), generic_msg->msg_type);
+            dbgerror_clear(DEBUG_ERR, "%s | %02u | UNRECOGNIZED MESSAGE TYPE %d\n", sim_time_string(), TOS_NODE_ID, generic_msg->msg_type);
         }
         return msg;
     }

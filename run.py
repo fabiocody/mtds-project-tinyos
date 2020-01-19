@@ -2,7 +2,7 @@
 
 N_MOTES = 5
 DBG_CHANNELS = "out err"
-SIM_TIME = 30
+SIM_TIME = 100
 TOPO_FILE = "linkgain.out"
 NOISE_FILE = "/usr/src/tinyos/tos/lib/tossim/noise/meyer-heavy.txt"
 #NOISE_FILE = "/usr/src/tinyos/tos/lib/tossim/noise/casino-lab.txt"
@@ -14,7 +14,9 @@ import sys
 t = Tossim([])
 r = t.radio()
 
-t.randomSeed(42)
+seed = int(sys.argv[1]) if len(sys.argv) >= 2 else 42
+print('seed = %d' % seed)
+t.randomSeed(seed)
 
 for channel in DBG_CHANNELS.split():
     t.addChannel(channel, sys.stdout)

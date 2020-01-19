@@ -11,6 +11,7 @@
 
 #define DEBUG_OUT "out"
 #define DEBUG_ERR "err"
+#define DEBUG_DBG "dbg"
 #define DEBUG_TEMP "temp"
 
 #define AM_CHANNEL 42
