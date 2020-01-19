@@ -14,12 +14,12 @@ module NodeC {
     uses interface AMSend;
     uses interface Receive;
     uses interface SplitControl as AMControl;
+    uses interface Queue<DATA_msg_t> as MessageQueue;
 } implementation {
     uint16_t setup_id = 0;
     int16_t threshold;
     uint16_t next_hop_to_sink;
     message_t pkt;
-    DATA_msg_t data_msg_to_relay;
 
     event void Boot.booted() {
         if (TOS_NODE_ID != 0) call TemperatureTimer.startPeriodic(TEMPERATURE_TIMER_PERIOD);
@@ -95,16 +95,20 @@ module NodeC {
     }
 
     task void forwardData() {
-        DATA_msg_t *data_msg = (DATA_msg_t *) call Packet.getPayload(&pkt, sizeof(DATA_msg_t));
+        DATA_msg_t saved_data_msg;
+        DATA_msg_t *data_msg;
+        if (call MessageQueue.empty()) return;
+        data_msg = (DATA_msg_t *) call Packet.getPayload(&pkt, sizeof(DATA_msg_t));
         if (data_msg == NULL) {
             dbg(DEBUG_ERR, "%s | NULL payload\n", sim_time_string());
             return;
         }
-        data_msg->msg_type = DATA_MSG_TYPE;
-        data_msg->sender = data_msg_to_relay.sender;
-        data_msg->temperature = data_msg_to_relay.temperature;
+        saved_data_msg = (DATA_msg_t) call MessageQueue.dequeue();
+        data_msg->msg_type = saved_data_msg.msg_type;
+        data_msg->sender = saved_data_msg.sender;
+        data_msg->temperature = saved_data_msg.temperature;
         if (call AMSend.send(next_hop_to_sink, &pkt, sizeof(DATA_msg_t)) == SUCCESS) {
-            dbg(DEBUG_OUT, "%s | Forwarded DATA message with temperature=%d to %d\n", sim_time_string(), data_msg_to_relay.temperature, next_hop_to_sink);
+            dbg(DEBUG_OUT, "%s | Forwarded DATA message with temperature=%d to %d\n", sim_time_string(), saved_data_msg.temperature, next_hop_to_sink);
         } else {
             dbg(DEBUG_ERR, "%s | Failed to forward DATA message\n", sim_time_string());
         }
@@ -126,8 +130,7 @@ module NodeC {
         } else if (generic_msg->msg_type == DATA_MSG_TYPE) {
             DATA_msg_t *data_msg = (DATA_msg_t *) payload;
             if (TOS_NODE_ID != 0) {
-                data_msg_to_relay.sender = data_msg->sender;
-                data_msg_to_relay.temperature = data_msg->temperature;
+                call MessageQueue.enqueue(*data_msg);
                 post forwardData();
             } else {
                 threshold = data_msg->temperature > threshold ? data_msg->temperature : threshold;

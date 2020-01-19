@@ -13,6 +13,7 @@ implementation {
     components new AMSenderC(AM_CHANNEL);
     components new AMReceiverC(AM_CHANNEL);
     components ActiveMessageC;
+    components new QueueC(DATA_msg_t, 64);
 
     App.TemperatureSensor -> TemperatureSensorC;
     App.TemperatureTimer -> TemperatureTimer;
@@ -23,4 +24,5 @@ implementation {
     App.AMSend -> AMSenderC;
     App.Receive -> AMReceiverC;
     App.AMControl -> ActiveMessageC;
+    App.MessageQueue -> QueueC;
 }
