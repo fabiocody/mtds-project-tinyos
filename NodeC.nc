@@ -49,7 +49,7 @@ module NodeC {
         setup_id++;
         setup_msg->msg_type = SETUP_MSG_TYPE;
         setup_msg->setup_id = setup_id;
-        setup_msg->threshold = 2030;
+        setup_msg->threshold = INITIAL_THRESHOLD;
         if (call AMSend.send(AM_BROADCAST_ADDR, &pkt, sizeof(SETUP_msg_t)) == SUCCESS) {
             dbg(DEBUG_OUT, "%s | Flooded SETUP message with setup_id=%d\n", sim_time_string(), setup_id);
         } else {
@@ -69,7 +69,7 @@ module NodeC {
             data_msg->sender = TOS_NODE_ID;
             data_msg->temperature = temperature;
             if (call AMSend.send(next_hop_to_sink, &pkt, sizeof(DATA_msg_t)) == SUCCESS) {
-                dbg(DEBUG_OUT, "%s | Sent DATA message with temperature=%d\n", sim_time_string(), temperature);
+                dbg(DEBUG_OUT, "%s | Sent DATA message with temperature=%d to %d\n", sim_time_string(), temperature, next_hop_to_sink);
             } else {
                 dbg(DEBUG_ERR, "%s | Failed to send DATA message\n", sim_time_string());
             }
@@ -115,11 +115,13 @@ module NodeC {
         if (generic_msg->msg_type == SETUP_MSG_TYPE) {
             if (TOS_NODE_ID != 0) {
                 SETUP_msg_t *setup_msg = (SETUP_msg_t *) payload;
-                setup_id = setup_msg->setup_id;
-                threshold = setup_msg->threshold;
-                next_hop_to_sink = call AMPacket.source(msg);
-                dbg(DEBUG_OUT, "%s | Received SETUP message from %d (setup_id=%d)\n", sim_time_string(), next_hop_to_sink, setup_id);
-                post floodSetup();
+                if (setup_msg->setup_id > setup_id) {
+                    setup_id = setup_msg->setup_id;
+                    threshold = setup_msg->threshold;
+                    next_hop_to_sink = call AMPacket.source(msg);
+                    dbg(DEBUG_OUT, "%s | Received SETUP message from %d (setup_id=%d)\n", sim_time_string(), next_hop_to_sink, setup_id);
+                    post floodSetup();
+                }
             }
         } else if (generic_msg->msg_type == DATA_MSG_TYPE) {
             DATA_msg_t *data_msg = (DATA_msg_t *) payload;
