@@ -17,8 +17,8 @@ module NodeC {
     uses interface Queue<DATA_msg_t> as MessageQueue;
 } implementation {
     uint16_t setup_id = 0;
-    int16_t threshold;
-    uint16_t next_hop_to_sink;
+    int16_t threshold = INITIAL_THRESHOLD;
+    uint16_t next_hop_to_sink = 0;
     message_t pkt;
 
     event void Boot.booted() {
@@ -28,7 +28,7 @@ module NodeC {
 
     event void AMControl.startDone(error_t err) {
         if (err == SUCCESS) {
-            if (TOS_NODE_ID == 0) call SetupTimer.startPeriodic(SETUP_TIMER_PERIOD);
+            if (TOS_NODE_ID == 0) call SetupTimer.startOneShot(SETUP_TIMER_PERIOD / 2);
         } else {
             call AMControl.start();
         }
@@ -49,12 +49,13 @@ module NodeC {
         setup_id++;
         setup_msg->msg_type = SETUP_MSG_TYPE;
         setup_msg->setup_id = setup_id;
-        setup_msg->threshold = INITIAL_THRESHOLD;
+        setup_msg->threshold = threshold;
         if (call AMSend.send(AM_BROADCAST_ADDR, &pkt, sizeof(SETUP_msg_t)) == SUCCESS) {
             dbg_clear(DEBUG_SETUP, "%s | %02u | SETUP(setup_id=%u, threshold=%d) flooded\n", sim_time_string(), TOS_NODE_ID, setup_id, threshold);
         } else {
             dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ SETUP(setup_id=%u, threshold=%d) failed to flood\n", sim_time_string(), TOS_NODE_ID, setup_id, threshold);
         }
+        call SetupTimer.startOneShot(SETUP_TIMER_PERIOD);
     }
 
     event void TemperatureSensor.readDone(error_t err, int16_t temperature) {
@@ -69,9 +70,9 @@ module NodeC {
             data_msg->sender = TOS_NODE_ID;
             data_msg->temperature = temperature;
             if (call AMSend.send(next_hop_to_sink, &pkt, sizeof(DATA_msg_t)) == SUCCESS) {
-                dbg_clear(DEBUG_DATA, "%s | %02u | DATA(temperature=%d) sent to %u\n", sim_time_string(), TOS_NODE_ID, temperature, next_hop_to_sink);
+                dbg_clear(DEBUG_DATA, "%s | %02u | DATA(temperature=%d, sender=%u) sent to %u\n", sim_time_string(), TOS_NODE_ID, temperature, TOS_NODE_ID, next_hop_to_sink);
             } else {
-                dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ DATA(temperature=%d) failed to send\n", sim_time_string(), TOS_NODE_ID, temperature);
+                dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ DATA(temperature=%d, sender=%u) failed to send\n", sim_time_string(), TOS_NODE_ID, temperature, TOS_NODE_ID);
             }
         }
     }
@@ -121,7 +122,7 @@ module NodeC {
                 SETUP_msg_t *setup_msg = (SETUP_msg_t *) payload;
                 if (setup_msg->setup_id > setup_id) {
                     setup_id = setup_msg->setup_id;
-                    threshold = setup_msg->threshold + 10;
+                    threshold = setup_msg->threshold;
                     next_hop_to_sink = call AMPacket.source(msg);
                     dbg_clear(DEBUG_SETUP, "%s | %02u | SETUP(setup_id=%u, threshold=%d) received from %u\n", sim_time_string(), TOS_NODE_ID, setup_id, threshold, next_hop_to_sink);
                     post floodSetup();
@@ -133,6 +134,9 @@ module NodeC {
                 call MessageQueue.enqueue(*data_msg);
                 post forwardData();
             } else {
+                if (data_msg->temperature > threshold)
+                    threshold = data_msg->temperature + 10;
+                    dbg_clear(DEBUG_DBG, "%s | %02u | threshold = %d\n", sim_time_string(), TOS_NODE_ID, threshold);
                 threshold = data_msg->temperature > threshold ? data_msg->temperature : threshold;
                 dbg_clear(DEBUG_DATA, "%s | %02u | DATA(temperature=%d, sender=%u) received\n", sim_time_string(), TOS_NODE_ID, data_msg->temperature, data_msg->sender);
             }

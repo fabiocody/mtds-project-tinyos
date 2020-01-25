@@ -1,8 +1,7 @@
 #!/usr/bin/python
 
-N_MOTES = 10
+N_MOTES = 3
 DBG_CHANNELS = "err data"
-SIM_TIME = 300
 TOPO_FILE = "linkgain.out"
 NOISE_FILE = "/usr/src/tinyos/tos/lib/tossim/noise/meyer-heavy.txt"
 #NOISE_FILE = "/usr/src/tinyos/tos/lib/tossim/noise/casino-lab.txt"
@@ -10,13 +9,20 @@ NOISE_FILE = "/usr/src/tinyos/tos/lib/tossim/noise/meyer-heavy.txt"
 from TOSSIM import *
 from random import *
 import sys
+from argparse import ArgumentParser
 
 t = Tossim([])
 r = t.radio()
 
-seed = int(sys.argv[1]) if len(sys.argv) >= 2 else 42
-print('seed = %d' % seed)
-t.randomSeed(seed)
+parser = ArgumentParser()
+parser.add_argument('--seed', '-s', type=int, default=42)
+parser.add_argument('--number-motes', '-n', type=int, default=6)
+parser.add_argument('--time', '-t', type=int, default=300)
+args = parser.parse_args()
+
+t.randomSeed(args.seed)
+N_MOTES = args.number_motes
+SIM_TIME = args.time
 
 for channel in DBG_CHANNELS.split():
     t.addChannel(channel, sys.stdout)
