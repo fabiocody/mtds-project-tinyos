@@ -1,10 +1,9 @@
 #!/usr/bin/python
 
-N_MOTES = 3
 DBG_CHANNELS = "err data"
 TOPO_FILE = "linkgain.out"
-NOISE_FILE = "/usr/src/tinyos/tos/lib/tossim/noise/meyer-heavy.txt"
-#NOISE_FILE = "/usr/src/tinyos/tos/lib/tossim/noise/casino-lab.txt"
+#NOISE_FILE = "/usr/src/tinyos/tos/lib/tossim/noise/meyer-heavy.txt"
+NOISE_FILE = "/usr/src/tinyos/tos/lib/tossim/noise/casino-lab.txt"
 
 from TOSSIM import *
 from random import *
@@ -15,7 +14,7 @@ t = Tossim([])
 r = t.radio()
 
 parser = ArgumentParser()
-parser.add_argument('--number-motes', '-n', type=int, default=6)
+parser.add_argument('--number-motes', '-n', type=int, default=10)
 parser.add_argument('--time', '-t', type=int, default=300)
 parser.add_argument('--seed', '-s', type=int, default=42)
 args = parser.parse_args()
@@ -31,7 +30,6 @@ for channel in DBG_CHANNELS.split():
 #add gain links
 f = open(TOPO_FILE, "r")
 lines = f.readlines()
-
 for line in lines:
     s = line.split()
     if (len(s) > 0):
@@ -39,7 +37,7 @@ for line in lines:
             r.add(int(s[1]), int(s[2]), float(s[3]))
         elif s[0] == "noise":
             r.setNoise(int(s[1]), float(s[2]), float(s[3]))
-	
+
 #add noise trace
 noise = open(NOISE_FILE, "r")
 lines = noise.readlines()
