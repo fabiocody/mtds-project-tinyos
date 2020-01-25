@@ -15,14 +15,14 @@ t = Tossim([])
 r = t.radio()
 
 parser = ArgumentParser()
-parser.add_argument('--seed', '-s', type=int, default=42)
 parser.add_argument('--number-motes', '-n', type=int, default=6)
 parser.add_argument('--time', '-t', type=int, default=300)
+parser.add_argument('--seed', '-s', type=int, default=42)
 args = parser.parse_args()
 
-t.randomSeed(args.seed)
 N_MOTES = args.number_motes
 SIM_TIME = args.time
+t.randomSeed(args.seed)
 
 for channel in DBG_CHANNELS.split():
     t.addChannel(channel, sys.stdout)
