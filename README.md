@@ -6,20 +6,4 @@ TinyOS project for the course Middleware Technologies for Distributed Systems.
 
 ## Building and running
 
-The building phase is handled with `make`. In order to build for simulation, you just need to run
-
-```bash
-$ make micaz sim
-```
-
-Then, you need to create the topology file.
-
-```bash
-$ java net.tinyos.sim.LinkLayerModel topoConfig.txt
-```
-
-Finally, you can run the simulation script with
-
-```bash
-$ ./run.py
-```
+The file `build_and_run.sh` contains all the commands needed to build and start the simulation.
