@@ -246,3 +246,5 @@ $RECYCLE.BIN/
 TOSSIM.py
 app.xml
 simbuild/
+linkgain.out
+topology.out
