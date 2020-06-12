@@ -9,17 +9,21 @@ module NodeC {
     uses interface Read<int16_t> as TemperatureSensor;
     uses interface Timer<TMilli> as TemperatureTimer;
     uses interface Timer<TMilli> as SetupTimer;
+    uses interface Timer<TMilli> as SendTimer;
     uses interface Boot;
     uses interface Packet;
     uses interface AMPacket;
     uses interface AMSend;
     uses interface Receive;
     uses interface SplitControl as AMControl;
-    uses interface Queue<DATA_msg_t> as MessageQueue;
+    uses interface Queue<uint16_t> as InAckQueue;
+    uses interface Queue<uint16_t> as OutAckQueue;
+    uses interface Queue<queueable_msg_t> as MessageQueue;
 } implementation {
     uint16_t setup_id = 0;
     int16_t threshold = INITIAL_THRESHOLD;
     uint16_t next_hop_to_sink = 0;
+    bool radio_busy = FALSE;
     message_t pkt;
 
     // Called when the node is booted.
@@ -34,6 +38,7 @@ module NodeC {
     // If the radio has started and the node is the sink, then it starts the timer used to send SETUP messages.
     event void AMControl.startDone(error_t err) {
         if (err == SUCCESS) {
+            call SendTimer.startPeriodic(SEND_TIMER_PERIOD);
             if (TOS_NODE_ID == 0) call SetupTimer.startOneShot(SETUP_TIMER_PERIOD / 2);
         } else {
             call AMControl.start();
@@ -49,21 +54,35 @@ module NodeC {
 
     // Called when the setup timer fires, it prepares and sends a SETUP message
     event void SetupTimer.fired() {
-        SETUP_msg_t *setup_msg = (SETUP_msg_t *) call Packet.getPayload(&pkt, sizeof(SETUP_msg_t));
-        if (setup_msg == NULL) {
-            dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ NULL payload\n", sim_time_string(), TOS_NODE_ID);
-            return;
-        }
+        queueable_msg_t queue_msg;
         setup_id++;
-        setup_msg->msg_type = SETUP_MSG_TYPE;
-        setup_msg->setup_id = setup_id;
-        setup_msg->threshold = threshold;
-        if (call AMSend.send(AM_BROADCAST_ADDR, &pkt, sizeof(SETUP_msg_t)) == SUCCESS) {
-            dbg_clear(DEBUG_SETUP, "%s | %02u | SETUP(setup_id=%u, threshold=%d) flooded\n", sim_time_string(), TOS_NODE_ID, setup_id, threshold);
-        } else {
-            dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ SETUP(setup_id=%u, threshold=%d) failed to flood\n", sim_time_string(), TOS_NODE_ID, setup_id, threshold);
-        }
+        queue_msg.dst = AM_BROADCAST_ADDR;
+        queue_msg.msg.msg_type = SETUP_MSG_TYPE;
+        queue_msg.msg.field1 = setup_id;
+        queue_msg.msg.field2 = threshold;
+        call MessageQueue.enqueue(queue_msg);
         call SetupTimer.startOneShot(SETUP_TIMER_PERIOD);
+    }
+
+    event void SendTimer.fired() {
+        if (!radio_busy && !(call MessageQueue.empty())) {
+            queueable_msg_t queue_msg = call MessageQueue.dequeue();
+            GENERIC_msg_t *msg = (GENERIC_msg_t *) call Packet.getPayload(&pkt, sizeof(GENERIC_msg_t));
+            if (msg == NULL) {
+                dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ NULL payload\n", sim_time_string(), TOS_NODE_ID);
+                return;
+            }
+            msg->msg_type = queue_msg.msg.msg_type;
+            msg->field1 = queue_msg.msg.field1;
+            msg->field2 = queue_msg.msg.field2;
+            if (call AMSend.send(queue_msg.dst, &pkt, sizeof(GENERIC_msg_t)) == SUCCESS) {
+                radio_busy = TRUE;
+                dbg_clear(DEBUG_SEND, "%s | %02u | MSG(type=%d, field16=%d, field8=%u) sent to %u\n", sim_time_string(), TOS_NODE_ID, queue_msg.msg.msg_type, queue_msg.msg.field1, queue_msg.msg.field2, queue_msg.dst);
+            } else {
+                call MessageQueue.enqueue(queue_msg);
+                dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ failed to send\n", sim_time_string(), TOS_NODE_ID);
+            }
+        }
     }
 
     // Called when the sensor has the value ready.
@@ -71,59 +90,31 @@ module NodeC {
     event void TemperatureSensor.readDone(error_t err, int16_t temperature) {
         dbg_clear(DEBUG_TEMP, "%s | %02u | temperature = %d\n", sim_time_string(), TOS_NODE_ID, temperature);
         if (setup_id > 0 && temperature > threshold) {
-            DATA_msg_t *data_msg = (DATA_msg_t *) call Packet.getPayload(&pkt, sizeof(DATA_msg_t));
-            if (data_msg == NULL) {
-                dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ NULL payload\n", sim_time_string(), TOS_NODE_ID);
-                return;
-            }
-            data_msg->msg_type = DATA_MSG_TYPE;
-            data_msg->sender = TOS_NODE_ID;
-            data_msg->temperature = temperature;
-            if (call AMSend.send(next_hop_to_sink, &pkt, sizeof(DATA_msg_t)) == SUCCESS) {
-                dbg_clear(DEBUG_DATA, "%s | %02u | DATA(temperature=%d, sender=%u) sent to %u\n", sim_time_string(), TOS_NODE_ID, temperature, TOS_NODE_ID, next_hop_to_sink);
-            } else {
-                dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ DATA(temperature=%d, sender=%u) failed to send\n", sim_time_string(), TOS_NODE_ID, temperature, TOS_NODE_ID);
-            }
+            queueable_msg_t queue_msg;
+            queue_msg.dst = next_hop_to_sink;
+            queue_msg.msg.msg_type = DATA_MSG_TYPE;
+            queue_msg.msg.field1 = TOS_NODE_ID;
+            queue_msg.msg.field2 = temperature;
+            call MessageQueue.enqueue(queue_msg);
         }
     }
 
-    event void AMSend.sendDone(message_t *msg, error_t err) {}
-
-    // Used to send SETUP messages to nearby nodes.
-    task void floodSetup() {
-        SETUP_msg_t *setup_msg = (SETUP_msg_t *) call Packet.getPayload(&pkt, sizeof(SETUP_msg_t));
-        if (setup_msg == NULL) {
-            dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ NULL payload\n", sim_time_string(), TOS_NODE_ID);
-            return;
-        }
-        setup_msg->msg_type = SETUP_MSG_TYPE;
-        setup_msg->setup_id = setup_id;
-        setup_msg->threshold = threshold;
-        if (call AMSend.send(AM_BROADCAST_ADDR, &pkt, sizeof(SETUP_msg_t)) == SUCCESS) {
-            dbg_clear(DEBUG_DBG, "%s | %02u | SETUP(setup_id=%u, threshold=%d) flooded\n", sim_time_string(), TOS_NODE_ID, setup_id, threshold);
-        } else {
-            dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ SETUP(setup_id=%u, threshold=%d) failed to flood\n", sim_time_string(), TOS_NODE_ID, setup_id, threshold);
-        }
+    event void AMSend.sendDone(message_t *msg, error_t err) {
+        if (&pkt == msg) radio_busy = FALSE;
     }
 
-    // Used to pass a DATA message to the next hop towards the sink.
-    task void forwardData() {
-        DATA_msg_t saved_data_msg;
-        DATA_msg_t *data_msg;
-        //if (call MessageQueue.empty()) return;
-        data_msg = (DATA_msg_t *) call Packet.getPayload(&pkt, sizeof(DATA_msg_t));
-        if (data_msg == NULL) {
+    task void ackMessage() {
+        uint16_t dst = call OutAckQueue.dequeue();
+        GENERIC_msg_t *generic_msg = (GENERIC_msg_t *) call Packet.getPayload(&pkt, sizeof(GENERIC_msg_t));
+        if (generic_msg == NULL) {
             dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ NULL payload\n", sim_time_string(), TOS_NODE_ID);
             return;
         }
-        saved_data_msg = (DATA_msg_t) call MessageQueue.dequeue();
-        data_msg->msg_type = saved_data_msg.msg_type;
-        data_msg->sender = saved_data_msg.sender;
-        data_msg->temperature = saved_data_msg.temperature;
-        if (call AMSend.send(next_hop_to_sink, &pkt, sizeof(DATA_msg_t)) == SUCCESS) {
-            dbg_clear(DEBUG_DATA, "%s | %02u | DATA(temperature=%d, sender=%u) forwarded to %u\n", sim_time_string(), TOS_NODE_ID, saved_data_msg.temperature, saved_data_msg.sender, next_hop_to_sink);
+        generic_msg->msg_type = ACK_MSG_TYPE;
+        if (call AMSend.send(dst, &pkt, sizeof(GENERIC_msg_t)) == SUCCESS) {
+            dbg_clear(DEBUG_ACK, "%s | %02u | ACK sent to %u\n", sim_time_string(), TOS_NODE_ID, dst);
         } else {
-            dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ DATA(temperature=%d, sender=%u) failed to forward\n", sim_time_string(), TOS_NODE_ID, saved_data_msg.temperature, saved_data_msg.sender);
+            dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ ACK failed to send to %u\n", sim_time_string(), TOS_NODE_ID, dst);
         }
     }
 
@@ -134,22 +125,35 @@ module NodeC {
     // If it is a DATA message, the node is the sink, and the temperature is above the current threshold, it updates the threshold.
     event message_t *Receive.receive(message_t *msg, void *payload, uint8_t len) {
         GENERIC_msg_t *generic_msg = (GENERIC_msg_t *) payload;
+        uint16_t source = call AMPacket.source(msg);
         if (generic_msg->msg_type == SETUP_MSG_TYPE) {
             if (TOS_NODE_ID != 0) {
                 SETUP_msg_t *setup_msg = (SETUP_msg_t *) payload;
                 if (setup_msg->setup_id > setup_id) {
+                    queueable_msg_t queue_msg;
                     setup_id = setup_msg->setup_id;
                     threshold = setup_msg->threshold;
-                    next_hop_to_sink = call AMPacket.source(msg);
+                    next_hop_to_sink = source;
                     dbg_clear(DEBUG_SETUP, "%s | %02u | SETUP(setup_id=%u, threshold=%d) received from %u\n", sim_time_string(), TOS_NODE_ID, setup_id, threshold, next_hop_to_sink);
-                    post floodSetup();
+                    queue_msg.dst = AM_BROADCAST_ADDR;
+                    queue_msg.msg.msg_type = setup_msg->msg_type;
+                    queue_msg.msg.field1 = setup_msg->setup_id;
+                    queue_msg.msg.field2 = setup_msg->threshold;
+                    call MessageQueue.enqueue(queue_msg);
                 }
             }
         } else if (generic_msg->msg_type == DATA_MSG_TYPE) {
             DATA_msg_t *data_msg = (DATA_msg_t *) payload;
+            /*call OutAckQueue.enqueue(source);
+            post ackMessage();
+            dbg_clear(DEBUG_TASK, "%s | %02u | ackMessage posted\n", sim_time_string(), TOS_NODE_ID);*/
             if (TOS_NODE_ID != 0) {
-                call MessageQueue.enqueue(*data_msg);
-                post forwardData();
+                queueable_msg_t queue_msg;
+                queue_msg.dst = next_hop_to_sink;
+                queue_msg.msg.msg_type = data_msg->msg_type;
+                queue_msg.msg.field1 = data_msg->sender;
+                queue_msg.msg.field2 = data_msg->temperature;
+                call MessageQueue.enqueue(queue_msg);
             } else {
                 dbg_clear(DEBUG_DATA, "%s | %02u | DATA(temperature=%d, sender=%u) received\n", sim_time_string(), TOS_NODE_ID, data_msg->temperature, data_msg->sender);
                 if (data_msg->temperature > threshold) {
@@ -157,6 +161,8 @@ module NodeC {
                     dbg_clear(DEBUG_TH, "%s | %02u | threshold = %d\n", sim_time_string(), TOS_NODE_ID, threshold);
                 }
             }
+        } else if (generic_msg->msg_type == ACK_MSG_TYPE) {
+            dbg_clear(DEBUG_ACK, "%s | %02u | ACK received\n", sim_time_string(), TOS_NODE_ID);
         } else {
             dbgerror_clear(DEBUG_ERR, "%s | %02u | UNRECOGNIZED MESSAGE TYPE %d\n", sim_time_string(), TOS_NODE_ID, generic_msg->msg_type);
         }
