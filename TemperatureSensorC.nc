@@ -1,6 +1,7 @@
 // TemperatureSensorC.nc
 
 
+// Configuration of the temperature sensor
 configuration TemperatureSensorC {
     provides interface Read<int16_t>;
 } implementation {

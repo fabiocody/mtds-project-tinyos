@@ -3,6 +3,7 @@
 #include "constants.h"
 
 
+// This is the starting point of the application. It states how the components are wired together.
 configuration NodeAppC {}
 implementation {
     components NodeC as App;

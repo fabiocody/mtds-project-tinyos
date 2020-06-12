@@ -4,6 +4,7 @@
 #include "messages.h"
 
 
+// This is the main body of the application. It contains all the application logic except the sensing part.
 module NodeC {
     uses interface Read<int16_t> as TemperatureSensor;
     uses interface Timer<TMilli> as TemperatureTimer;
@@ -21,11 +22,16 @@ module NodeC {
     uint16_t next_hop_to_sink = 0;
     message_t pkt;
 
+    // Called when the node is booted.
+    // If the node is a sensor, then it starts the temperature timer.
+    // In any case, it starts up the radio.
     event void Boot.booted() {
         if (TOS_NODE_ID != 0) call TemperatureTimer.startPeriodic(TEMPERATURE_TIMER_PERIOD);
         call AMControl.start();
     }
 
+    // Called when the radio has has finished starting up.
+    // If the radio has started and the node is the sink, then it starts the timer used to send SETUP messages.
     event void AMControl.startDone(error_t err) {
         if (err == SUCCESS) {
             if (TOS_NODE_ID == 0) call SetupTimer.startOneShot(SETUP_TIMER_PERIOD / 2);
@@ -36,10 +42,12 @@ module NodeC {
 
     event void AMControl.stopDone(error_t err) {}
     
+    // Called when the temperature timer fires, it asks the sensor for a value.
     event void TemperatureTimer.fired() {
         call TemperatureSensor.read();
     }
 
+    // Called when the setup timer fires, it prepares and sends a SETUP message
     event void SetupTimer.fired() {
         SETUP_msg_t *setup_msg = (SETUP_msg_t *) call Packet.getPayload(&pkt, sizeof(SETUP_msg_t));
         if (setup_msg == NULL) {
@@ -58,6 +66,8 @@ module NodeC {
         call SetupTimer.startOneShot(SETUP_TIMER_PERIOD);
     }
 
+    // Called when the sensor has the value ready.
+    // If the temperature is above the threshold, it sends a DATA message.
     event void TemperatureSensor.readDone(error_t err, int16_t temperature) {
         dbg_clear(DEBUG_TEMP, "%s | %02u | temperature = %d\n", sim_time_string(), TOS_NODE_ID, temperature);
         if (setup_id > 0 && temperature > threshold) {
@@ -79,6 +89,7 @@ module NodeC {
 
     event void AMSend.sendDone(message_t *msg, error_t err) {}
 
+    // Used to send SETUP messages to nearby nodes.
     task void floodSetup() {
         SETUP_msg_t *setup_msg = (SETUP_msg_t *) call Packet.getPayload(&pkt, sizeof(SETUP_msg_t));
         if (setup_msg == NULL) {
@@ -95,6 +106,7 @@ module NodeC {
         }
     }
 
+    // Used to pass a DATA message to the next hop towards the sink.
     task void forwardData() {
         DATA_msg_t saved_data_msg;
         DATA_msg_t *data_msg;
@@ -115,6 +127,11 @@ module NodeC {
         }
     }
 
+    // Called when a message is received.
+    // If it is a SETUP message, the node is a sensor and the message has never been received before,
+    // then it saves the message content and relays it.
+    // If it is a DATA message and the node is a sensor, then the message is relayed to the next hop towards the sink.
+    // If it is a DATA message, the node is the sink, and the temperature is above the current threshold, it updates the threshold.
     event message_t *Receive.receive(message_t *msg, void *payload, uint8_t len) {
         GENERIC_msg_t *generic_msg = (GENERIC_msg_t *) payload;
         if (generic_msg->msg_type == SETUP_MSG_TYPE) {
@@ -134,11 +151,11 @@ module NodeC {
                 call MessageQueue.enqueue(*data_msg);
                 post forwardData();
             } else {
-                if (data_msg->temperature > threshold)
-                    threshold = data_msg->temperature + 10;
-                    dbg_clear(DEBUG_DBG, "%s | %02u | threshold = %d\n", sim_time_string(), TOS_NODE_ID, threshold);
-                threshold = data_msg->temperature > threshold ? data_msg->temperature : threshold;
                 dbg_clear(DEBUG_DATA, "%s | %02u | DATA(temperature=%d, sender=%u) received\n", sim_time_string(), TOS_NODE_ID, data_msg->temperature, data_msg->sender);
+                if (data_msg->temperature > threshold) {
+                    threshold = data_msg->temperature + THRESHOLD_INCREASE;
+                    dbg_clear(DEBUG_TH, "%s | %02u | threshold = %d\n", sim_time_string(), TOS_NODE_ID, threshold);
+                }
             }
         } else {
             dbgerror_clear(DEBUG_ERR, "%s | %02u | UNRECOGNIZED MESSAGE TYPE %d\n", sim_time_string(), TOS_NODE_ID, generic_msg->msg_type);
