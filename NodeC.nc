@@ -77,10 +77,22 @@ module NodeC {
             msg->field2 = queue_msg.msg.field2;
             if (call AMSend.send(queue_msg.dst, &pkt, sizeof(GENERIC_msg_t)) == SUCCESS) {
                 radio_busy = TRUE;
-                dbg_clear(DEBUG_SEND, "%s | %02u | MSG(type=%d, field16=%d, field8=%u) sent to %u\n", sim_time_string(), TOS_NODE_ID, queue_msg.msg.msg_type, queue_msg.msg.field1, queue_msg.msg.field2, queue_msg.dst);
+                switch (queue_msg.msg.msg_type) {
+                    case 1:
+                        dbg_clear(DEBUG_SETUP, "%s | %02u | SETUP(setup_id=%u, threshold=%d) flooded\n", sim_time_string(), TOS_NODE_ID, queue_msg.msg.field1, queue_msg.msg.field2);
+                        break;
+                    case 2:
+                        dbg_clear(DEBUG_DATA, "%s | %02u | DATA(sender=%u, temperature=%d) sent to %u\n", sim_time_string(), TOS_NODE_ID, queue_msg.msg.field1, queue_msg.msg.field2, queue_msg.dst);
+                        break;
+                    case 3:
+                        dbg_clear(DEBUG_ACK, "%s | %02u | ACK sent\n", sim_time_string(), TOS_NODE_ID);
+                        break;
+                    default:
+                        dbg_clear(DEBUG_SEND, "%s | %02u | MSG(type=%d, field16=%d, field8=%u) sent to %u\n", sim_time_string(), TOS_NODE_ID, queue_msg.msg.msg_type, queue_msg.msg.field1, queue_msg.msg.field2, queue_msg.dst);
+                }
             } else {
                 call MessageQueue.enqueue(queue_msg);
-                dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ failed to send\n", sim_time_string(), TOS_NODE_ID);
+                dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ failed to send MSG(type=%d, field16=%d, field8=%u)\n", sim_time_string(), TOS_NODE_ID, queue_msg.msg.msg_type, queue_msg.msg.field1, queue_msg.msg.field2);
             }
         }
     }
@@ -155,7 +167,7 @@ module NodeC {
                 queue_msg.msg.field2 = data_msg->temperature;
                 call MessageQueue.enqueue(queue_msg);
             } else {
-                dbg_clear(DEBUG_DATA, "%s | %02u | DATA(temperature=%d, sender=%u) received\n", sim_time_string(), TOS_NODE_ID, data_msg->temperature, data_msg->sender);
+                dbg_clear(DEBUG_DATA, "%s | %02u | DATA(sender=%u, temperature=%d) received\n", sim_time_string(), TOS_NODE_ID, data_msg->sender, data_msg->temperature);
                 if (data_msg->temperature > threshold) {
                     threshold = data_msg->temperature + THRESHOLD_INCREASE;
                     dbg_clear(DEBUG_TH, "%s | %02u | threshold = %d\n", sim_time_string(), TOS_NODE_ID, threshold);
