@@ -11,6 +11,7 @@
 #define SEND_TIMER_PERIOD 10
 #define ACK_TIMER_PERIOD 100
 #define THRESHOLD_INCREASE 10
+#define MAX_RETRANSMISSIONS 10
 
 #define DEBUG_ERR "err"
 #define DEBUG_DBG "dbg"

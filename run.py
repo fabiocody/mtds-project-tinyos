@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-DBG_CHANNELS = "err dbg ack data th"
+DBG_CHANNELS = "err dbg data th"
 TOPO_FILE = "linkgain.out"
 #NOISE_FILE = "/usr/src/tinyos/tos/lib/tossim/noise/meyer-heavy.txt"
 NOISE_FILE = "/usr/src/tinyos/tos/lib/tossim/noise/casino-lab.txt"

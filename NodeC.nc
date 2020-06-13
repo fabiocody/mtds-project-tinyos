@@ -25,6 +25,7 @@ module NodeC {
     bool radio_busy = FALSE;
     bool awaiting_ack = FALSE;
     queueable_msg_t awaiting_ack_msg;
+    uint8_t n_retransmissions = 0;
     message_t pkt;
 
     // Called when the node is booted.
@@ -66,7 +67,7 @@ module NodeC {
     }
 
     // Used to send a message
-    void send(queueable_msg_t queue_msg) {
+    void send(queueable_msg_t queue_msg, bool resend) {
         GENERIC_msg_t *msg = (GENERIC_msg_t *) call Packet.getPayload(&pkt, sizeof(GENERIC_msg_t));
         if (msg == NULL) {
             dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ NULL payload\n", sim_time_string(), TOS_NODE_ID);
@@ -83,8 +84,11 @@ module NodeC {
                     break;
                 case 2:
                     dbg_clear(DEBUG_DATA, "%s | %02u | DATA(sender=%u, temperature=%d) sent to %u\n", sim_time_string(), TOS_NODE_ID, queue_msg.msg.field1, queue_msg.msg.field2, queue_msg.dst);
-                    awaiting_ack_msg = queue_msg;
-                    awaiting_ack = TRUE;
+                    if (!resend) {
+                        awaiting_ack_msg = queue_msg;
+                        awaiting_ack = TRUE;
+                        n_retransmissions = 0;
+                    }
                     call AckTimer.startOneShot(ACK_TIMER_PERIOD);
                     break;
                 case 3:
@@ -105,17 +109,17 @@ module NodeC {
     event void SendTimer.fired() {
         if (!radio_busy && !awaiting_ack && !(call MessageQueue.empty())) {
             queueable_msg_t queue_msg = call MessageQueue.dequeue();
-            send(queue_msg);
+            send(queue_msg, FALSE);
         }
     }
 
     // Called when there's a message that it has not been acknowledged,
     // so that it can be sent again.
     event void AckTimer.fired() {
-        if (awaiting_ack) {
-            dbg_clear(DEBUG_ACK, "%s | %02u | Resending MSG(type=%d, field1=%d, field2=%u) to %u\n", sim_time_string(), TOS_NODE_ID, awaiting_ack_msg.msg.msg_type, awaiting_ack_msg.msg.field1, awaiting_ack_msg.msg.field2, awaiting_ack_msg.dst);
-            send(awaiting_ack_msg);
-            call AckTimer.startOneShot(ACK_TIMER_PERIOD);
+        if (awaiting_ack && n_retransmissions < MAX_RETRANSMISSIONS) {
+            dbg_clear(DEBUG_ACK, "%s | %02u | Resending MSG(type=%d, field1=%d, field2=%u) to %u (%u retransmissions)\n", sim_time_string(), TOS_NODE_ID, awaiting_ack_msg.msg.msg_type, awaiting_ack_msg.msg.field1, awaiting_ack_msg.msg.field2, awaiting_ack_msg.dst, n_retransmissions);
+            send(awaiting_ack_msg, TRUE);
+            n_retransmissions++;
         }
     }
 
@@ -183,8 +187,8 @@ module NodeC {
             }
         } else if (generic_msg->msg_type == ACK_MSG_TYPE) {
             dbg_clear(DEBUG_ACK, "%s | %02u | ACK received\n", sim_time_string(), TOS_NODE_ID);
-            call AckTimer.stop();
             awaiting_ack = FALSE;
+            call AckTimer.stop();
         } else {
             dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ UNRECOGNIZED MESSAGE TYPE %d\n", sim_time_string(), TOS_NODE_ID, generic_msg->msg_type);
         }
