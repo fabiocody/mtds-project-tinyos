@@ -9,6 +9,7 @@
 #define TEMPERATURE_TIMER_PERIOD 10000
 #define SETUP_TIMER_PERIOD 10000
 #define SEND_TIMER_PERIOD 10
+#define ACK_TIMER_PERIOD 100
 #define THRESHOLD_INCREASE 10
 
 #define DEBUG_ERR "err"
@@ -18,8 +19,6 @@
 #define DEBUG_DATA "data"
 #define DEBUG_TH "th"
 #define DEBUG_ACK "ack"
-#define DEBUG_TASK "task"
-#define DEBUG_SEND "send"
 
 #define AM_CHANNEL 42
 

@@ -10,20 +10,21 @@ module NodeC {
     uses interface Timer<TMilli> as TemperatureTimer;
     uses interface Timer<TMilli> as SetupTimer;
     uses interface Timer<TMilli> as SendTimer;
+    uses interface Timer<TMilli> as AckTimer;
     uses interface Boot;
     uses interface Packet;
     uses interface AMPacket;
     uses interface AMSend;
     uses interface Receive;
     uses interface SplitControl as AMControl;
-    uses interface Queue<uint16_t> as InAckQueue;
-    uses interface Queue<uint16_t> as OutAckQueue;
     uses interface Queue<queueable_msg_t> as MessageQueue;
 } implementation {
     uint16_t setup_id = 0;
     int16_t threshold = INITIAL_THRESHOLD;
     uint16_t next_hop_to_sink = 0;
     bool radio_busy = FALSE;
+    bool awaiting_ack = FALSE;
+    queueable_msg_t awaiting_ack_msg;
     message_t pkt;
 
     // Called when the node is booted.
@@ -64,37 +65,50 @@ module NodeC {
         call SetupTimer.startOneShot(SETUP_TIMER_PERIOD);
     }
 
-    event void SendTimer.fired() {
-        if (!radio_busy && !(call MessageQueue.empty())) {
-            queueable_msg_t queue_msg = call MessageQueue.dequeue();
-            GENERIC_msg_t *msg = (GENERIC_msg_t *) call Packet.getPayload(&pkt, sizeof(GENERIC_msg_t));
-            if (msg == NULL) {
-                dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ NULL payload\n", sim_time_string(), TOS_NODE_ID);
-                return;
-            }
-            msg->msg_type = queue_msg.msg.msg_type;
-            msg->field1 = queue_msg.msg.field1;
-            msg->field2 = queue_msg.msg.field2;
-            if (call AMSend.send(queue_msg.dst, &pkt, sizeof(GENERIC_msg_t)) == SUCCESS) {
-                radio_busy = TRUE;
-                switch (queue_msg.msg.msg_type) {
-                    case 1:
-                        dbg_clear(DEBUG_SETUP, "%s | %02u | SETUP(setup_id=%u, threshold=%d) flooded\n", sim_time_string(), TOS_NODE_ID, queue_msg.msg.field1, queue_msg.msg.field2);
-                        break;
-                    case 2:
-                        dbg_clear(DEBUG_DATA, "%s | %02u | DATA(sender=%u, temperature=%d) sent to %u\n", sim_time_string(), TOS_NODE_ID, queue_msg.msg.field1, queue_msg.msg.field2, queue_msg.dst);
-                        break;
-                    case 3:
-                        dbg_clear(DEBUG_ACK, "%s | %02u | ACK sent\n", sim_time_string(), TOS_NODE_ID);
-                        break;
-                    default:
-                        dbg_clear(DEBUG_SEND, "%s | %02u | MSG(type=%d, field16=%d, field8=%u) sent to %u\n", sim_time_string(), TOS_NODE_ID, queue_msg.msg.msg_type, queue_msg.msg.field1, queue_msg.msg.field2, queue_msg.dst);
-                }
-            } else {
-                call MessageQueue.enqueue(queue_msg);
-                dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ failed to send MSG(type=%d, field16=%d, field8=%u)\n", sim_time_string(), TOS_NODE_ID, queue_msg.msg.msg_type, queue_msg.msg.field1, queue_msg.msg.field2);
-            }
+    void send(queueable_msg_t queue_msg) {
+        GENERIC_msg_t *msg = (GENERIC_msg_t *) call Packet.getPayload(&pkt, sizeof(GENERIC_msg_t));
+        if (msg == NULL) {
+            dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ NULL payload\n", sim_time_string(), TOS_NODE_ID);
+            return;
         }
+        msg->msg_type = queue_msg.msg.msg_type;
+        msg->field1 = queue_msg.msg.field1;
+        msg->field2 = queue_msg.msg.field2;
+        if (call AMSend.send(queue_msg.dst, &pkt, sizeof(GENERIC_msg_t)) == SUCCESS) {
+            radio_busy = TRUE;
+            switch (queue_msg.msg.msg_type) {
+                case 1:
+                    dbg_clear(DEBUG_SETUP, "%s | %02u | SETUP(setup_id=%u, threshold=%d) flooded\n", sim_time_string(), TOS_NODE_ID, queue_msg.msg.field1, queue_msg.msg.field2);
+                    break;
+                case 2:
+                    dbg_clear(DEBUG_DATA, "%s | %02u | DATA(sender=%u, temperature=%d) sent to %u\n", sim_time_string(), TOS_NODE_ID, queue_msg.msg.field1, queue_msg.msg.field2, queue_msg.dst);
+                    awaiting_ack_msg = queue_msg;
+                    awaiting_ack = TRUE;
+                    call AckTimer.startOneShot(ACK_TIMER_PERIOD);
+                    break;
+                case 3:
+                    dbg_clear(DEBUG_ACK, "%s | %02u | ACK(sender=%u, temperature=%d) sent to %u\n", sim_time_string(), TOS_NODE_ID, queue_msg.msg.field1, queue_msg.msg.field2, queue_msg.dst);
+                    break;
+                default:
+                    dbg_clear(DEBUG_DBG, "%s | %02u | MSG(type=%d, field1=%d, field2=%u) sent to %u\n", sim_time_string(), TOS_NODE_ID, queue_msg.msg.msg_type, queue_msg.msg.field1, queue_msg.msg.field2, queue_msg.dst);
+            }
+        } else {
+            call MessageQueue.enqueue(queue_msg);
+            dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ failed to send MSG(type=%d, field16=%d, field8=%u)\n", sim_time_string(), TOS_NODE_ID, queue_msg.msg.msg_type, queue_msg.msg.field1, queue_msg.msg.field2);
+        }
+    }
+
+    event void SendTimer.fired() {
+        if (!radio_busy && !awaiting_ack && !(call MessageQueue.empty())) {
+            queueable_msg_t queue_msg = call MessageQueue.dequeue();
+            send(queue_msg);
+        }
+    }
+
+    event void AckTimer.fired() {
+        dbg_clear(DEBUG_ACK, "%s | %02u | Resending MSG(type=%d, field1=%d, field2=%u) to %u\n", sim_time_string(), TOS_NODE_ID, awaiting_ack_msg.msg.msg_type, awaiting_ack_msg.msg.field1, awaiting_ack_msg.msg.field2, awaiting_ack_msg.dst);
+        send(awaiting_ack_msg);
+        call AckTimer.startOneShot(ACK_TIMER_PERIOD);
     }
 
     // Called when the sensor has the value ready.
@@ -113,21 +127,6 @@ module NodeC {
 
     event void AMSend.sendDone(message_t *msg, error_t err) {
         if (&pkt == msg) radio_busy = FALSE;
-    }
-
-    task void ackMessage() {
-        uint16_t dst = call OutAckQueue.dequeue();
-        GENERIC_msg_t *generic_msg = (GENERIC_msg_t *) call Packet.getPayload(&pkt, sizeof(GENERIC_msg_t));
-        if (generic_msg == NULL) {
-            dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ NULL payload\n", sim_time_string(), TOS_NODE_ID);
-            return;
-        }
-        generic_msg->msg_type = ACK_MSG_TYPE;
-        if (call AMSend.send(dst, &pkt, sizeof(GENERIC_msg_t)) == SUCCESS) {
-            dbg_clear(DEBUG_ACK, "%s | %02u | ACK sent to %u\n", sim_time_string(), TOS_NODE_ID, dst);
-        } else {
-            dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ ACK failed to send to %u\n", sim_time_string(), TOS_NODE_ID, dst);
-        }
     }
 
     // Called when a message is received.
@@ -156,15 +155,15 @@ module NodeC {
             }
         } else if (generic_msg->msg_type == DATA_MSG_TYPE) {
             DATA_msg_t *data_msg = (DATA_msg_t *) payload;
-            /*call OutAckQueue.enqueue(source);
-            post ackMessage();
-            dbg_clear(DEBUG_TASK, "%s | %02u | ackMessage posted\n", sim_time_string(), TOS_NODE_ID);*/
+            queueable_msg_t queue_msg;
+            queue_msg.dst = source;
+            queue_msg.msg.msg_type = ACK_MSG_TYPE;
+            queue_msg.msg.field1 = data_msg->sender;
+            queue_msg.msg.field2 = data_msg->temperature;
+            call MessageQueue.enqueue(queue_msg);
             if (TOS_NODE_ID != 0) {
-                queueable_msg_t queue_msg;
                 queue_msg.dst = next_hop_to_sink;
                 queue_msg.msg.msg_type = data_msg->msg_type;
-                queue_msg.msg.field1 = data_msg->sender;
-                queue_msg.msg.field2 = data_msg->temperature;
                 call MessageQueue.enqueue(queue_msg);
             } else {
                 dbg_clear(DEBUG_DATA, "%s | %02u | DATA(sender=%u, temperature=%d) received\n", sim_time_string(), TOS_NODE_ID, data_msg->sender, data_msg->temperature);
@@ -175,8 +174,10 @@ module NodeC {
             }
         } else if (generic_msg->msg_type == ACK_MSG_TYPE) {
             dbg_clear(DEBUG_ACK, "%s | %02u | ACK received\n", sim_time_string(), TOS_NODE_ID);
+            call AckTimer.stop();
+            awaiting_ack = FALSE;
         } else {
-            dbgerror_clear(DEBUG_ERR, "%s | %02u | UNRECOGNIZED MESSAGE TYPE %d\n", sim_time_string(), TOS_NODE_ID, generic_msg->msg_type);
+            dbgerror_clear(DEBUG_ERR, "%s | %02u | +++ERROR+++ UNRECOGNIZED MESSAGE TYPE %d\n", sim_time_string(), TOS_NODE_ID, generic_msg->msg_type);
         }
         return msg;
     }
