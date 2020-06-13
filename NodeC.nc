@@ -65,6 +65,7 @@ module NodeC {
         call SetupTimer.startOneShot(SETUP_TIMER_PERIOD);
     }
 
+    // Used to send a message
     void send(queueable_msg_t queue_msg) {
         GENERIC_msg_t *msg = (GENERIC_msg_t *) call Packet.getPayload(&pkt, sizeof(GENERIC_msg_t));
         if (msg == NULL) {
@@ -98,6 +99,9 @@ module NodeC {
         }
     }
 
+    // Called when it's time to send a message.
+    // If the radio is free, there's no message waiting to be acknowledged
+    // and, of course, if there's a message to be sent, then send it.
     event void SendTimer.fired() {
         if (!radio_busy && !awaiting_ack && !(call MessageQueue.empty())) {
             queueable_msg_t queue_msg = call MessageQueue.dequeue();
@@ -105,10 +109,14 @@ module NodeC {
         }
     }
 
+    // Called when there's a message that it has not been acknowledged,
+    // so that it can be sent again.
     event void AckTimer.fired() {
-        dbg_clear(DEBUG_ACK, "%s | %02u | Resending MSG(type=%d, field1=%d, field2=%u) to %u\n", sim_time_string(), TOS_NODE_ID, awaiting_ack_msg.msg.msg_type, awaiting_ack_msg.msg.field1, awaiting_ack_msg.msg.field2, awaiting_ack_msg.dst);
-        send(awaiting_ack_msg);
-        call AckTimer.startOneShot(ACK_TIMER_PERIOD);
+        if (awaiting_ack) {
+            dbg_clear(DEBUG_ACK, "%s | %02u | Resending MSG(type=%d, field1=%d, field2=%u) to %u\n", sim_time_string(), TOS_NODE_ID, awaiting_ack_msg.msg.msg_type, awaiting_ack_msg.msg.field1, awaiting_ack_msg.msg.field2, awaiting_ack_msg.dst);
+            send(awaiting_ack_msg);
+            call AckTimer.startOneShot(ACK_TIMER_PERIOD);
+        }
     }
 
     // Called when the sensor has the value ready.
@@ -125,6 +133,7 @@ module NodeC {
         }
     }
 
+    // When a message has been sent out, make the radio free to use.
     event void AMSend.sendDone(message_t *msg, error_t err) {
         if (&pkt == msg) radio_busy = FALSE;
     }
