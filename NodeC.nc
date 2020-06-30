@@ -39,9 +39,9 @@ module NodeC {
     // If the radio has started and the node is the sink, then it starts the timer used to send SETUP messages.
     event void AMControl.startDone(error_t err) {
         if (err == SUCCESS) {
-            if (TOS_NODE_ID == 0)
+            if (TOS_NODE_ID == 0)   // SINK NODE
                 call SetupTimer.startOneShot(SETUP_TIMER_PERIOD / 2);
-            else
+            else    // SENSOR NODE
                 call TemperatureTimer.startPeriodic(TEMPERATURE_TIMER_PERIOD);
             call SendTimer.startPeriodic(SEND_TIMER_PERIOD);
         } else {
@@ -153,7 +153,7 @@ module NodeC {
         GENERIC_msg_t *generic_msg = (GENERIC_msg_t *) payload;
         uint16_t source = call AMPacket.source(msg);
         if (generic_msg->msg_type == SETUP_MSG_TYPE) {
-            if (TOS_NODE_ID != 0) {
+            if (TOS_NODE_ID != 0) {     // SENSOR NODE
                 SETUP_msg_t *setup_msg = (SETUP_msg_t *) payload;
                 if (setup_msg->setup_id > setup_id) {
                     queueable_msg_t queue_msg;
@@ -176,11 +176,11 @@ module NodeC {
             queue_msg.msg.field1 = data_msg->sender;
             queue_msg.msg.field2 = data_msg->temperature;
             call MessageQueue.enqueue(queue_msg);
-            if (TOS_NODE_ID != 0) {
+            if (TOS_NODE_ID != 0) {     // SENSOR NODE
                 queue_msg.dst = next_hop_to_sink;
                 queue_msg.msg.msg_type = data_msg->msg_type;
                 call MessageQueue.enqueue(queue_msg);
-            } else {
+            } else {    // SINK NODE
                 dbg_clear(DEBUG_DATA, "%s | %02u | DATA(sender=%u, temperature=%d) received\n", sim_time_string(), TOS_NODE_ID, data_msg->sender, data_msg->temperature);
                 if (data_msg->temperature > threshold) {
                     threshold = data_msg->temperature + THRESHOLD_INCREASE;
