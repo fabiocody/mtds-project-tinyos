@@ -32,7 +32,6 @@ module NodeC {
     // If the node is a sensor, then it starts the temperature timer.
     // In any case, it starts up the radio.
     event void Boot.booted() {
-        if (TOS_NODE_ID != 0) call TemperatureTimer.startPeriodic(TEMPERATURE_TIMER_PERIOD);
         call AMControl.start();
     }
 
@@ -40,8 +39,11 @@ module NodeC {
     // If the radio has started and the node is the sink, then it starts the timer used to send SETUP messages.
     event void AMControl.startDone(error_t err) {
         if (err == SUCCESS) {
+            if (TOS_NODE_ID == 0)
+                call SetupTimer.startOneShot(SETUP_TIMER_PERIOD / 2);
+            else
+                call TemperatureTimer.startPeriodic(TEMPERATURE_TIMER_PERIOD);
             call SendTimer.startPeriodic(SEND_TIMER_PERIOD);
-            if (TOS_NODE_ID == 0) call SetupTimer.startOneShot(SETUP_TIMER_PERIOD / 2);
         } else {
             call AMControl.start();
         }
